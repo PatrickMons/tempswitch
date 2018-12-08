@@ -1,4 +1,4 @@
-#include <DHT.h>
+#include <dht.h>
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiMulti.h>
@@ -15,7 +15,7 @@ char path[] = "/ws";
 
 #define DHTTYPE DHT22     // DHT 11
 #define DHTPIN D5          // GPIO 5 (D1) OR for ESP change it to GPIO0
-DHT dht(DHTPIN, DHTTYPE);
+dht DHT;
 
 const int relayPin = D4;    // GPIO 16 (D0) OR change it to GPIO2
 
@@ -59,8 +59,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) { //uint8_t
 void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true);
-  dht.begin();
-
+  
   pinMode(relayPin, OUTPUT);
 
   for (uint8_t t = 4; t > 0; t--) {
@@ -149,12 +148,12 @@ void processWebScoketRequest(String data) {
     } else if (value == "umidita") {
       //response with current humidity DHT.humidity
       Serial.println("Humidity response...");
-      jsonResponse.replace("<text>", "current humidity is " + String(dht.readHumidity()) + " percent");
+      jsonResponse.replace("<text>", "current humidity is " + String(DHT.humidity) + " percent");
 
     } else if (value == "temperatura") {
       //response with current temperature DHT.temperature /Celsius2Fahrenheit(DHT.temperature)
       Serial.println("Temp response...");
-      jsonResponse.replace("<text>", "current temperature is " + String(Celsius2Fahrenheit(dht.readTemperature())) + " fahrenheit");
+      jsonResponse.replace("<text>", "current temperature is " + String(Celsius2Fahrenheit(DHT.temperature)) + " fahrenheit");
     }
   } else { //can not recognized the command
     Serial.println("Command is not recognized!");
@@ -177,7 +176,7 @@ void setTrigger(String obj, String val) {
   Serial.println("");
 
   if (String("fahrenheit") == obj) {
-    if (Celsius2Fahrenheit(dht.readTemperature()) >= val.toFloat()) {
+    if (Celsius2Fahrenheit(DHT.temperature) >= val.toFloat()) {
       Serial.println("Fahrenheit trigger on!");
       digitalWrite(relayPin, HIGH);
     } else {
@@ -185,7 +184,7 @@ void setTrigger(String obj, String val) {
     }
   } else if (String("celsius") == obj) {
     //Celsius2Fahrenheit(DHT.temperature)
-    if (dht.readTemperature() >= val.toFloat()) {
+    if (DHT.temperature >= val.toFloat()) {
       Serial.println("Celsius trigger on!");
       digitalWrite(relayPin, HIGH);
     } else {
@@ -193,7 +192,7 @@ void setTrigger(String obj, String val) {
     }
   } else {
     //DHT.humidity
-    if (dht.readHumidity() >= val.toFloat()) {
+    if (DHT.humidity >= val.toFloat()) {
       Serial.println("Humidity trigger on!");
       digitalWrite(relayPin, HIGH);
     } else {
@@ -204,14 +203,14 @@ void setTrigger(String obj, String val) {
 
 
 void getTemp() {
-  //  DHT.read11(dht_dpin);
+  DHT.read22(DHTPIN);
   Serial.print("Current humidity = ");
-  Serial.print(dht.readHumidity());
+  Serial.print(DHT.humidity);
   Serial.print("%  ");
   Serial.print("temperature = ");
-  Serial.print(dht.readTemperature());
+  Serial.print(DHT.temperature);
   Serial.print("C  ");
-  Serial.print(Celsius2Fahrenheit(dht.readTemperature()));
+  Serial.print(Celsius2Fahrenheit(DHT.temperature));
   Serial.println("F  ");
   delay(1000);//Don't try to access too frequently... in theory
   //should be once per two seconds, fastest,
