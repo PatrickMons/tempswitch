@@ -1,4 +1,4 @@
-WebSocket Server and Client for Arduino
+WebSocket Server and Client for Arduino [![Build Status](https://travis-ci.org/Links2004/arduinoWebSockets.svg?branch=master)](https://travis-ci.org/Links2004/arduinoWebSockets)
 ===========================================
 
 a WebSocket Server and Client for Arduino based on RFC6455.
@@ -23,7 +23,8 @@ a WebSocket Server and Client for Arduino based on RFC6455.
  - wss / SSL is not possible.
 
 ##### Supported Hardware #####
- - ESP8266 [Arduino for ESP8266](https://github.com/Links2004/Arduino)
+ - ESP8266 [Arduino for ESP8266](https://github.com/esp8266/Arduino/)
+ - ESP32 [Arduino for ESP32](https://github.com/espressif/arduino-esp32)
  - ESP31B
  - Particle with STM32 ARM Cortex M3
  - ATmega328 with Ethernet Shield (ATmega branch)

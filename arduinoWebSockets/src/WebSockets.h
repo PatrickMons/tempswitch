@@ -30,39 +30,54 @@
 #define bit(b) (1UL << (b)) // Taken directly from Arduino.h
 #else
 #include <Arduino.h>
+#include <IPAddress.h>
 #endif
 
+#ifdef ARDUINO_ARCH_AVR
+#error Version 2.x.x currently does not support Arduino with AVR since there is no support for std namespace of c++.
+#error Use Version 1.x.x. (ATmega branch)
+#else
 #include <functional>
+#endif
 
+
+#ifndef NODEBUG_WEBSOCKETS
 #ifdef DEBUG_ESP_PORT
 #define DEBUG_WEBSOCKETS(...) DEBUG_ESP_PORT.printf( __VA_ARGS__ )
 #else
 //#define DEBUG_WEBSOCKETS(...) os_printf( __VA_ARGS__ )
 #endif
+#endif
+
 
 #ifndef DEBUG_WEBSOCKETS
 #define DEBUG_WEBSOCKETS(...)
 #define NODEBUG_WEBSOCKETS
 #endif
 
-#ifdef ESP8266
+#if defined(ESP8266) || defined(ESP32)
+
 #define WEBSOCKETS_MAX_DATA_SIZE  (15*1024)
 #define WEBSOCKETS_USE_BIG_MEM
 #define GET_FREE_HEAP ESP.getFreeHeap()
 // moves all Header strings to Flash (~300 Byte)
 //#define WEBSOCKETS_SAVE_RAM
-#else
-#ifdef STM32_DEVICE
+
+#elif defined(STM32_DEVICE)
+
 #define WEBSOCKETS_MAX_DATA_SIZE  (15*1024)
 #define WEBSOCKETS_USE_BIG_MEM
 #define GET_FREE_HEAP System.freeMemory()
+
 #else
+
 //atmega328p has only 2KB ram!
 #define WEBSOCKETS_MAX_DATA_SIZE  (1024)
 // moves all Header strings to Flash
 #define WEBSOCKETS_SAVE_RAM
+
 #endif
-#endif
+
 
 #define WEBSOCKETS_TCP_TIMEOUT    (2000)
 
@@ -70,36 +85,46 @@
 #define NETWORK_ESP8266         (1)
 #define NETWORK_W5100           (2)
 #define NETWORK_ENC28J60        (3)
+#define NETWORK_ESP32           (4)
 
 // max size of the WS Message Header
 #define WEBSOCKETS_MAX_HEADER_SIZE  (14)
 
-#if !defined(WEBSOCKETS_NETWORK_TYPE) 
+#if !defined(WEBSOCKETS_NETWORK_TYPE)
 // select Network type based
 #if defined(ESP8266) || defined(ESP31B)
 #define WEBSOCKETS_NETWORK_TYPE NETWORK_ESP8266
 //#define WEBSOCKETS_NETWORK_TYPE NETWORK_ESP8266_ASYNC
 //#define WEBSOCKETS_NETWORK_TYPE NETWORK_W5100
+
+#elif defined(ESP32)
+#define WEBSOCKETS_NETWORK_TYPE NETWORK_ESP32
+
 #else
 #define WEBSOCKETS_NETWORK_TYPE NETWORK_W5100
+
 #endif
 #endif
 
+// Includes and defined based on Network Type
 #if (WEBSOCKETS_NETWORK_TYPE == NETWORK_ESP8266_ASYNC)
 
 // Note:
 //   No SSL/WSS support for client in Async mode
 //   TLS lib need a sync interface!
 
-#if !defined(ESP8266) && !defined(ESP31B)
+
+#if defined(ESP8266)
+#include <ESP8266WiFi.h>
+#elif defined(ESP32)
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#elif defined(ESP31B)
+#include <ESP31BWiFi.h>
+#else
 #error "network type ESP8266 ASYNC only possible on the ESP mcu!"
 #endif
 
-#ifdef ESP8266
-#include <ESP8266WiFi.h>
-#else
-#include <ESP31BWiFi.h>
-#endif
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncTCPbuffer.h>
 #define WEBSOCKETS_NETWORK_CLASS AsyncTCPbuffer
@@ -136,6 +161,13 @@
 #include <UIPEthernet.h>
 #define WEBSOCKETS_NETWORK_CLASS UIPClient
 #define WEBSOCKETS_NETWORK_SERVER_CLASS UIPServer
+
+#elif (WEBSOCKETS_NETWORK_TYPE == NETWORK_ESP32)
+
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#define WEBSOCKETS_NETWORK_CLASS WiFiClient
+#define WEBSOCKETS_NETWORK_SERVER_CLASS WiFiServer
 
 #else
 #error "no network type selected!"
@@ -201,7 +233,7 @@ typedef struct {
 
         bool isSocketIO;    ///< client for socket.io server
 
-#if (WEBSOCKETS_NETWORK_TYPE == NETWORK_ESP8266)
+#if (WEBSOCKETS_NETWORK_TYPE == NETWORK_ESP8266) || (WEBSOCKETS_NETWORK_TYPE == NETWORK_ESP32)
         bool isSSL;             ///< run in ssl mode
         WiFiClientSecure * ssl;
 #endif
@@ -209,6 +241,7 @@ typedef struct {
         String cUrl;        ///< http url
         uint16_t cCode;     ///< http code
 
+        bool cIsClient = false;     ///< will be used for masking
         bool cIsUpgrade;    ///< Connection == Upgrade
         bool cIsWebsocket;  ///< Upgrade == websocket
 
@@ -225,6 +258,8 @@ typedef struct {
 
         String base64Authorization; ///< Base64 encoded Auth request
         String plainAuthorization; ///< Base64 encoded Auth request
+
+        String extraHeaders;
 
         bool cHttpHeadersValid; ///< non-websocket http header validity indicator
         size_t cMandatoryHeadersCount; ///< non-websocket mandatory http headers present count
@@ -245,13 +280,13 @@ class WebSockets {
         typedef std::function<void(WSclient_t * client, bool ok)> WSreadWaitCb;
 #endif
 
-        virtual void clientDisconnect(WSclient_t * client);
-        virtual bool clientIsConnected(WSclient_t * client);
+        virtual void clientDisconnect(WSclient_t * client) = 0;
+        virtual bool clientIsConnected(WSclient_t * client) = 0;
 
-        virtual void messageReceived(WSclient_t * client, WSopcode_t opcode, uint8_t * payload, size_t length, bool fin);
+        virtual void messageReceived(WSclient_t * client, WSopcode_t opcode, uint8_t * payload, size_t length, bool fin) = 0;
 
         void clientDisconnect(WSclient_t * client, uint16_t code, char * reason = NULL, size_t reasonLen = 0);
-        bool sendFrame(WSclient_t * client, WSopcode_t opcode, uint8_t * payload = NULL, size_t length = 0, bool mask = false, bool fin = true, bool headerToPayload = false);
+        bool sendFrame(WSclient_t * client, WSopcode_t opcode, uint8_t * payload = NULL, size_t length = 0, bool fin = true, bool headerToPayload = false);
 
         void headerDone(WSclient_t * client);
 
@@ -265,8 +300,13 @@ class WebSockets {
         String base64_encode(uint8_t * data, size_t length);
 
         bool readCb(WSclient_t * client, uint8_t *out, size_t n, WSreadWaitCb cb);
+        virtual size_t write(WSclient_t * client, uint8_t *out, size_t n);
+        size_t write(WSclient_t * client, const char *out);
 
 
 };
 
+#ifndef UNUSED
+#define UNUSED(var) (void)(var)
+#endif
 #endif /* WEBSOCKETS_H_ */
